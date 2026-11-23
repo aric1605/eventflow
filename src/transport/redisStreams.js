@@ -1,7 +1,7 @@
 import os from 'node:os';
 import Redis from 'ioredis';
 import { EventTransport } from './base.js';
-import { getConfig } from '../config.js';
+import { getConfig, sanitizeRedisUrl } from '../config.js';
 
 /**
  * Helper to convert Redis array format [k1, v1, k2, v2] to key-value object
@@ -46,7 +46,7 @@ export class RedisStreamsTransport extends EventTransport {
     if (opts.client) {
       this.client = opts.client;
     } else {
-      const redisUrl = opts.redisUrl || config.REDIS_URL;
+      const redisUrl = sanitizeRedisUrl(opts.redisUrl || config.REDIS_URL);
       this.client = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         enableReadyCheck: true,

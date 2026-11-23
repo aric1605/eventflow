@@ -1,6 +1,43 @@
 import { z } from 'zod';
 
 /**
+ * Sanitize Redis connection strings (e.g. if copied with Upstash CLI prefix 'redis-cli --tls -u')
+ * @param {string} raw
+ * @returns {string}
+ */
+export function sanitizeRedisUrl(raw) {
+  if (!raw || typeof raw !== 'string') return raw;
+  let trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  const match = trimmed.match(/(rediss?:\/\/[^\s"']+)/);
+  return match ? match[1] : trimmed;
+}
+
+/**
+ * Sanitize PostgreSQL connection strings (strips channel_binding for Neon pooled connections)
+ * @param {string} raw
+ * @returns {string}
+ */
+export function sanitizeDatabaseUrl(raw) {
+  if (!raw || typeof raw !== 'string') return raw;
+  let trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed
+    .replace(/&channel_binding=require/g, '')
+    .replace(/\?channel_binding=require&?/g, '?');
+}
+
+/**
  * Mask secret credentials in a connection string or URL for safe logging.
  * Replaces credentials with '***:***'.
  * @param {string} rawUrl
@@ -8,8 +45,9 @@ import { z } from 'zod';
  */
 export function maskUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return '';
+  const cleanUrl = sanitizeRedisUrl(rawUrl);
   try {
-    const parsed = new URL(rawUrl);
+    const parsed = new URL(cleanUrl);
     if (parsed.password || parsed.username) {
       parsed.username = '***';
       parsed.password = '***';
@@ -17,7 +55,7 @@ export function maskUrl(rawUrl) {
     return parsed.toString();
   } catch {
     // If not a parseable URL, mask everything after the protocol
-    const parts = rawUrl.split('://');
+    const parts = cleanUrl.split('://');
     if (parts.length === 2) {
       return `${parts[0]}://***`;
     }
@@ -29,8 +67,14 @@ export function maskUrl(rawUrl) {
  * Environment configuration schema
  */
 const envSchema = z.object({
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
+  DATABASE_URL: z
+    .string()
+    .min(1, 'DATABASE_URL is required')
+    .transform(sanitizeDatabaseUrl),
+  REDIS_URL: z
+    .string()
+    .min(1, 'REDIS_URL is required')
+    .transform(sanitizeRedisUrl),
   API_KEY: z.string().min(1, 'API_KEY is required'),
   PORT: z.coerce.number().int().positive().default(10000),
   ROLE: z.enum(['all', 'api', 'worker']).default('all'),
