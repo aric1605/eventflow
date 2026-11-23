@@ -583,7 +583,7 @@ export async function startServer() {
 // Direct CLI startup
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   startServer().catch((err) => {
-    process.stderr.write(`[EventFlow Fatal] ${err.message}\n`);
+    process.stderr.write(`[EventFlow Fatal] ${err.stack || err.message}\n`);
     process.exit(1);
   });
 }
