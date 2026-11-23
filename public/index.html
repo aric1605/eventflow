@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EventFlow — Distributed Event Processing Platform</title>
+  
+  <!-- Prevent theme flash -->
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('eventflow_theme');
+      if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+      } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">⚡</div>
+        <div>
+          <span class="brand-title">EventFlow</span>
+          <span class="brand-tag">v1.0 • ESM</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Health status indicator -->
+        <div id="health-pill" class="pill" aria-live="polite">
+          <span class="pill-dot" aria-hidden="true"></span>
+          <span id="health-text">Connecting...</span>
+        </div>
+
+        <!-- API Key Input for unlocked operator actions -->
+        <input type="password" id="api-key-input" placeholder="API Key (optional)" title="Enter API Key to unlock discard & restricted operations" style="width: 140px; font-size: 11px;">
+
+        <!-- Theme Toggle -->
+        <button id="theme-toggle-btn" class="sm" title="Toggle Theme" aria-label="Toggle dark/light theme">
+          <span id="theme-icon">☀️</span>
+        </button>
+
+        <!-- Refresh Button -->
+        <button id="refresh-btn" class="sm primary" title="Refresh Dashboard">
+          ↻ Refresh
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Server Warm-up Notification Banner -->
+    <div id="warmup-banner" class="banner hidden" role="status" aria-live="polite">
+      ⏳ Waking up the server, this can take up to a minute on the free tier...
+    </div>
+
+    <!-- Notification Toast Area -->
+    <div id="notification-bar" aria-live="assertive"></div>
+
+    <!-- 1. KPI Cards Grid -->
+    <section aria-labelledby="kpi-heading">
+      <h2 id="kpi-heading" class="sr-only" style="display:none">Key Metrics</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Queue Depth</span>
+          <span class="kpi-value" id="kpi-depth">-</span>
+          <span class="kpi-sub">Redis stream length</span>
+        </div>
+
+        <div class="kpi-card">
+          <span class="kpi-label">In Flight</span>
+          <span class="kpi-value" id="kpi-inflight">-</span>
+          <span class="kpi-sub">Active unacked messages</span>
+        </div>
+
+        <div class="kpi-card">
+          <span class="kpi-label">Succeeded</span>
+          <span class="kpi-value" id="kpi-succeeded" style="color: var(--success);">-</span>
+          <span class="kpi-sub">Processed successfully</span>
+        </div>
+
+        <div class="kpi-card">
+          <span class="kpi-label">Retrying</span>
+          <span class="kpi-value" id="kpi-retrying" style="color: var(--warning);">-</span>
+          <span class="kpi-sub">Backing off with jitter</span>
+        </div>
+
+        <div class="kpi-card">
+          <span class="kpi-label">Dead-Lettered</span>
+          <span class="kpi-value" id="kpi-dead" style="color: var(--danger);">-</span>
+          <span class="kpi-sub">Max attempts exhausted</span>
+        </div>
+
+        <div class="kpi-card">
+          <span class="kpi-label">Throughput</span>
+          <span class="kpi-value" id="kpi-throughput">-</span>
+          <span class="kpi-sub">Events in last 1 min</span>
+        </div>
+
+        <div class="kpi-card">
+          <span class="kpi-label">p95 Latency</span>
+          <span class="kpi-value" id="kpi-p95">-</span>
+          <span class="kpi-sub">Last 1 hour processing</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Throughput Chart -->
+    <section class="chart-card" aria-labelledby="chart-title">
+      <div class="chart-header">
+        <h2 id="chart-title" class="section-title">Throughput Activity (Last 30 Minutes)</h2>
+        <span class="chart-summary" id="chart-summary-text">Waiting for metrics...</span>
+      </div>
+      <div class="svg-chart-container" id="chart-container">
+        <!-- Responsive SVG injected by app.js -->
+        <svg id="throughput-svg" width="100%" height="100%" viewBox="0 0 800 120" preserveAspectRatio="none" role="img" aria-label="30-minute throughput bar chart"></svg>
+      </div>
+      <p id="chart-sr-summary" class="sr-only" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0);">Interactive chart representing throughput over time.</p>
+    </section>
+
+    <!-- 3. Try It Demo Panel -->
+    <section class="panel" aria-labelledby="demo-title">
+      <h2 id="demo-title" class="section-title">Interactive Demo Console</h2>
+      <p style="font-size: 13px; color: var(--text-muted);">
+        Test distributed execution scenarios with one click. Scenarios demonstrate idempotent processing, retries with exponential backoff &amp; full jitter, timeout handling, crash recovery, and dead-letter queueing.
+      </p>
+
+      <div class="demo-buttons-grid">
+        <div class="demo-btn-card">
+          <div class="demo-btn-header">
+            <strong>Standard Echo</strong>
+            <button class="primary sm" data-scenario="success">Emit Success</button>
+          </div>
+          <p class="demo-desc">Dispatches <code>demo.echo</code>. Worker processes cleanly in 50–300ms.</p>
+        </div>
+
+        <div class="demo-btn-card">
+          <div class="demo-btn-header">
+            <strong>Flaky Service (Retry)</strong>
+            <button class="sm" data-scenario="flaky">Emit Flaky</button>
+          </div>
+          <p class="demo-desc">Fails on attempts 1 and 2, applies exponential backoff + jitter, then succeeds on attempt 3.</p>
+        </div>
+
+        <div class="demo-btn-card">
+          <div class="demo-btn-header">
+            <strong>Poison Message (DLQ)</strong>
+            <button class="sm" data-scenario="poison">Emit Poison</button>
+          </div>
+          <p class="demo-desc">Continuously throws an unparseable error until reaching <code>MAX_ATTEMPTS</code>, then routes to DLQ.</p>
+        </div>
+
+        <div class="demo-btn-card">
+          <div class="demo-btn-header">
+            <strong>Permanent Error</strong>
+            <button class="sm" data-scenario="permanent">Emit Permanent</button>
+          </div>
+          <p class="demo-desc">Throws <code>PermanentError</code> (e.g. deleted account). Bypasses retries directly to DLQ.</p>
+        </div>
+
+        <div class="demo-btn-card">
+          <div class="demo-btn-header">
+            <strong>Handler Timeout</strong>
+            <button class="sm" data-scenario="slow">Emit Slow</button>
+          </div>
+          <p class="demo-desc">Exceeds <code>HANDLER_TIMEOUT_MS</code> (8s). Worker aborts execution with <code>TimeoutError</code>.</p>
+        </div>
+
+        <div class="demo-btn-card">
+          <div class="demo-btn-header">
+            <strong>Simulated Crash</strong>
+            <button class="sm" data-scenario="crash">Emit Crash</button>
+          </div>
+          <p class="demo-desc">Worker terminates without ACK. Recovery sweeper reclaims event via visibility timeout.</p>
+        </div>
+
+        <div class="demo-btn-card">
+          <div class="demo-btn-header">
+            <strong>Concurrent Burst (x20)</strong>
+            <button class="primary sm" data-scenario="burst">Emit Burst x20</button>
+          </div>
+          <p class="demo-desc">Ingests 20 events simultaneously to observe adaptive worker concurrency and batching.</p>
+        </div>
+      </div>
+
+      <div class="demo-note">
+        <strong>Retry &amp; Backoff Formula:</strong> <code>delay = min(RETRY_MAX_MS, RETRY_BASE_MS * 2^(attempt - 1)) * jitter[0.5, 1.0]</code>. Guarantees randomized spread and avoids thunderous herd problems.
+      </div>
+    </section>
+
+    <!-- 4. Tab Navigation -->
+    <nav class="tabs-nav" aria-label="Dashboard views">
+      <button class="tab-btn active" data-tab="tab-events">Live Events</button>
+      <button class="tab-btn" data-tab="tab-dlq">Dead-Letter Queue (DLQ)</button>
+      <button class="tab-btn" data-tab="tab-about">Architecture &amp; Semantics</button>
+    </nav>
+
+    <!-- TAB 1: Live Events -->
+    <div id="tab-events" class="tab-content active">
+      <div class="filter-bar">
+        <div class="filter-chips" id="status-chips">
+          <button class="chip active" data-status="">All</button>
+          <button class="chip" data-status="queued">Queued</button>
+          <button class="chip" data-status="processing">Processing</button>
+          <button class="chip" data-status="succeeded">Succeeded</button>
+          <button class="chip" data-status="retrying">Retrying</button>
+          <button class="chip" data-status="dead">Dead</button>
+        </div>
+
+        <input type="text" id="type-filter" placeholder="Filter by type..." style="width: 180px;">
+      </div>
+
+      <div class="table-responsive responsive-cards">
+        <table id="events-table">
+          <thead>
+            <tr>
+              <th>Event ID</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Attempts</th>
+              <th>Duration</th>
+              <th>Created At</th>
+            </tr>
+          </thead>
+          <tbody id="events-tbody">
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">Loading events...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: Dead-Letter Queue (DLQ) -->
+    <div id="tab-dlq" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <p style="font-size: 13px; color: var(--text-muted);">
+          Events that exceeded maximum attempts or encountered unrecoverable permanent errors. Replay reschedules the event with attempt counter reset.
+        </p>
+        <button id="replay-all-btn" class="sm primary" title="Requires API Key">Replay All (Max 100)</button>
+      </div>
+
+      <div class="table-responsive responsive-cards">
+        <table id="dlq-table">
+          <thead>
+            <tr>
+              <th>Event ID</th>
+              <th>Type</th>
+              <th>Attempts</th>
+              <th>Last Error</th>
+              <th>Finished At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="dlq-tbody">
+            <tr>
+              <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 24px;">No dead-lettered events.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 3: About & Architecture -->
+    <div id="tab-about" class="tab-content">
+      <div class="doc-card">
+        <h3>Distributed Event Processing Architecture</h3>
+        <p>
+          <strong>EventFlow</strong> is an enterprise-grade asynchronous event ingestion and processing engine built with Fastify, PostgreSQL (Neon), and Redis Streams (Upstash).
+        </p>
+
+        <h3>Delivery Semantics &amp; Guarantees</h3>
+        <ul>
+          <li><strong>AT-LEAST-ONCE Delivery:</strong> Events are guaranteed to be executed at least once. If a worker crashes mid-computation or an unacknowledged timeout occurs, the recovery sweeper reclaims the message.</li>
+          <li><strong>IDEMPOTENT Processing:</strong> Side effects happen <em>effectively once</em> because of atomic row-level claim locking (<code>UPDATE events ... WHERE (status IN ('queued','retrying') OR stale) FOR UPDATE SKIP LOCKED</code>). Duplicate stream deliveries are acknowledged and skipped without re-running handlers.</li>
+          <li><strong>NO Ordering Guarantee:</strong> To achieve high concurrent throughput and resilience across distributed worker instances, event execution order across distinct events is explicitly not guaranteed.</li>
+        </ul>
+
+        <h3>Lifecycle State Machine</h3>
+        <p>
+          <code>received</code> (persisted in Postgres) &rarr; <code>queued</code> (published to Redis Stream <code>events:main</code>) &rarr; <code>processing</code> (atomic claim by worker) &rarr; <code>succeeded</code> (attempt recorded, result persisted, stream ACK) OR <code>retrying</code> (exponential backoff with full jitter scheduled) OR <code>dead</code> (persisted to DLQ after exhausting max attempts or permanent error).
+        </p>
+
+        <h3>Free-Tier Engineering Considerations</h3>
+        <ul>
+          <li><strong>Upstash Redis Command Quota:</strong> Workers use adaptive exponential polling (500ms doubling to 60s) rather than tight loops or blocking commands, conserving commands while idling. Ingestion invokes in-process <code>worker.wake()</code> for instantaneous processing of active bursts.</li>
+          <li><strong>Neon PostgreSQL Cold Starts:</strong> Connection pooling with configured timeouts and a 3-stage exponential connection retry policy handles serverless database wakeups gracefully.</li>
+          <li><strong>Render Sleep &amp; Crash Recovery:</strong> When free compute sleeps or redeploys, in-flight jobs are safely reclaimed upon waking via visibility timeout sweeper (<code>XAUTOCLAIM</code>).</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <!-- Event Details Modal / Drawer -->
+  <div id="event-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title" style="font-size: 16px; font-weight: 600;">Event Details</h3>
+        <button id="modal-close-btn" class="sm" aria-label="Close dialog">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <!-- Injected safely via textContent and DOM elements -->
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
